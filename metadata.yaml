@@ -1,0 +1,7 @@
+homepage: "https://katla.app"
+documentation: "https://docs.katla.app/google-consent-mode"
+versions:
+  # Latest version first. Replace the sha with the commit that adds template.tpl in the
+  # public gallery repository before submitting.
+  - sha: 0000000000000000000000000000000000000000
+    changeNotes: Initial release.
