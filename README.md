@@ -13,16 +13,19 @@ other tag.
 
 ## What the tag does
 
-1. Declares the default: `ad_storage`, `analytics_storage`, `ad_user_data` and
+1. Sets Katla's CMP Partner Program developer ID (`developer_id.dZmFkYT`).
+2. Declares the default: `ad_storage`, `analytics_storage`, `ad_user_data` and
    `ad_personalization` denied, with `wait_for_update` (500 ms unless changed).
-2. For a returning visitor, reads `_katla_consent` and sends their stored choice as an
+3. For a returning visitor, reads `_katla_consent` and sends their stored choice as an
    update straight away.
-3. Sets `window.__katlaGcmDefault` and injects `https://cdn.katla.app/{siteId}.consent.js`.
+4. Sets `window.__katlaGcmDefault` and injects `https://cdn.katla.app/{siteId}.consent.js`.
    The engine shows the banner, runs the cookie guard and sends `gtag('consent', 'update')`
    when the visitor chooses: `analytics` → `analytics_storage`, `marketing` → the three ad
    signals.
 
-Optional: `ads_data_redaction` and `url_passthrough`.
+Optional: regional defaults (a table of ISO 3166-2 region codes, each with its own analytics
+and advertising default, sent as `setDefaultConsentState` calls with `region`),
+`ads_data_redaction` and `url_passthrough`.
 
 ## Setup
 

@@ -82,6 +82,65 @@ ___TEMPLATE_PARAMETERS___
     ]
   },
   {
+    "type": "SIMPLE_TABLE",
+    "name": "regionSettings",
+    "displayName": "Regional defaults",
+    "help": "Every signal defaults to denied. Add a row to use a different default in some regions: one or more ISO 3166-2 codes separated by commas, such as SE, DE or US-CA. The most specific region wins, and a visitor's own choice always replaces the default.",
+    "simpleTableColumns": [
+      {
+        "defaultValue": "",
+        "displayName": "Region",
+        "name": "region",
+        "type": "TEXT",
+        "valueValidators": [
+          {
+            "type": "NON_EMPTY"
+          },
+          {
+            "type": "REGEX",
+            "args": [
+              "^\\s*[a-zA-Z]{2}(-[a-zA-Z0-9]{1,3})?\\s*(,\\s*[a-zA-Z]{2}(-[a-zA-Z0-9]{1,3})?\\s*)*$"
+            ],
+            "errorMessage": "Use ISO 3166-2 codes separated by commas, such as SE, DE or US-CA."
+          }
+        ]
+      },
+      {
+        "defaultValue": "denied",
+        "displayName": "Analytics (analytics_storage)",
+        "name": "analytics",
+        "type": "SELECT",
+        "selectItems": [
+          {
+            "value": "denied",
+            "displayValue": "Denied"
+          },
+          {
+            "value": "granted",
+            "displayValue": "Granted"
+          }
+        ]
+      },
+      {
+        "defaultValue": "denied",
+        "displayName": "Advertising (ad_storage, ad_user_data, ad_personalization)",
+        "name": "ads",
+        "type": "SELECT",
+        "selectItems": [
+          {
+            "value": "denied",
+            "displayValue": "Denied"
+          },
+          {
+            "value": "granted",
+            "displayValue": "Granted"
+          }
+        ]
+      }
+    ],
+    "newRowButtonText": "Add region"
+  },
+  {
     "type": "CHECKBOX",
     "name": "adsDataRedaction",
     "checkboxText": "Redact ads data while ad_storage is denied (ads_data_redaction)",
@@ -126,6 +185,8 @@ const encodeUriComponent = require('encodeUriComponent');
 const makeNumber = require('makeNumber');
 
 const CDN = 'https://cdn.katla.app/';
+// Katla's ID in Google's CMP Partner Program, so Google can attribute the consent signals.
+const DEVELOPER_ID = 'dZmFkYT';
 const DEFAULT_WAIT_FOR_UPDATE = 500;
 
 // All four signals from two answers: may we store analytics, and may we store advertising.
@@ -163,10 +224,29 @@ const waitForUpdate =
     ? DEFAULT_WAIT_FOR_UPDATE
     : makeNumber(data.waitForUpdate);
 
+// Regional rows first, then the global default. Google applies the most specific region
+// whatever the order, so the global call only covers visitors no row matches.
+const regionRows = data.regionSettings || [];
+for (let i = 0; i < regionRows.length; i++) {
+  const row = regionRows[i];
+  const regions = [];
+  const codes = row.region.split(',');
+  for (let j = 0; j < codes.length; j++) {
+    const code = codes[j].trim().toUpperCase();
+    if (code) regions.push(code);
+  }
+  if (regions.length === 0) continue;
+  const regional = signals(row.analytics === 'granted', row.ads === 'granted');
+  regional.region = regions;
+  regional.wait_for_update = waitForUpdate;
+  setDefaultConsentState(regional);
+}
+
 const defaults = signals(false, false);
 defaults.wait_for_update = waitForUpdate;
 setDefaultConsentState(defaults);
 
+gtagSet('developer_id.' + DEVELOPER_ID, true);
 if (data.adsDataRedaction) gtagSet('ads_data_redaction', true);
 if (data.urlPassthrough) gtagSet('url_passthrough', true);
 
@@ -467,6 +547,10 @@ ___WEB_PERMISSIONS___
             "listItem": [
               {
                 "type": 1,
+                "string": "developer_id.dZmFkYT"
+              },
+              {
+                "type": 1,
                 "string": "ads_data_redaction"
               },
               {
@@ -503,6 +587,7 @@ scenarios:
       wait_for_update: 500
     });
     assertApi('updateConsentState').wasNotCalled();
+    assertApi('gtagSet').wasCalledWith('developer_id.dZmFkYT', true);
     assertThat(injected).isEqualTo('https://cdn.katla.app/fc92b6df-034c-42a9-af5c-397971caa002.consent.js');
     assertApi('gtmOnSuccess').wasCalled();
 - name: Returning visitor who accepted everything is updated to granted
@@ -533,6 +618,37 @@ scenarios:
     mockData.locale = 'EN';
     runCode(mockData);
     assertThat(injected).isEqualTo('https://cdn.katla.app/fc92b6df-034c-42a9-af5c-397971caa002.consent.js?locale=en');
+- name: Regional rows declare their own default ahead of the global one
+  code: |-
+    mock('getCookieValues', function () { return []; });
+    mockData.regionSettings = [
+      { region: 'us-ca, US-NY', analytics: 'granted', ads: 'denied' },
+      { region: 'SE', analytics: 'denied', ads: 'denied' }
+    ];
+    runCode(mockData);
+    assertApi('setDefaultConsentState').wasCalledWith({
+      analytics_storage: 'granted',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      region: ['US-CA', 'US-NY'],
+      wait_for_update: 500
+    });
+    assertApi('setDefaultConsentState').wasCalledWith({
+      analytics_storage: 'denied',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      region: ['SE'],
+      wait_for_update: 500
+    });
+    assertApi('setDefaultConsentState').wasCalledWith({
+      analytics_storage: 'denied',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+      wait_for_update: 500
+    });
 setup: |-
   const mockData = {
     siteId: 'fc92b6df-034c-42a9-af5c-397971caa002',
