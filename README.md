@@ -17,11 +17,31 @@ other tag.
 2. Declares the default: `ad_storage`, `analytics_storage`, `ad_user_data` and
    `ad_personalization` denied, with `wait_for_update` (500 ms unless changed).
 3. For a returning visitor, reads `_katla_consent` and sends their stored choice as an
-   update straight away.
+   update straight away, followed by a `consent_update` dataLayer event carrying the same
+   state.
 4. Sets `window.__katlaGcmDefault` and injects `https://cdn.katla.app/{siteId}.consent.js`.
    The engine shows the banner, runs the cookie guard and sends `gtag('consent', 'update')`
    when the visitor chooses: `analytics` → `analytics_storage`, `marketing` → the three ad
-   signals.
+   signals. The same `consent_update` event follows that update.
+
+The `consent_update` event is there for triggers. A consent command has no event name, so a
+Custom Event trigger cannot fire on it, and a non-Google tag held back for consent would
+otherwise wait for the next page view:
+
+```js
+{
+  event: 'consent_update',
+  consent_state: {
+    ad_storage: 'granted',
+    ad_user_data: 'granted',
+    ad_personalization: 'granted',
+    analytics_storage: 'granted'
+  }
+}
+```
+
+Use a Custom Event trigger on `consent_update`, with Data Layer Variables such as
+`consent_state.ad_storage` to fire only on the state a tag needs.
 
 Optional: regional defaults (a table of ISO 3166-2 region codes, each with its own analytics
 and advertising default, sent as `setDefaultConsentState` calls with `region`),

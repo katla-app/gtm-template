@@ -171,12 +171,16 @@ ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
  *  1. Declare the default: all four signals denied, with wait_for_update.
  *  2. A returning visitor's stored choice becomes an update straight away, read from the
  *     same cookie and parsed the same way as the loader does, so their first page view is
- *     measured with the consent they already gave.
+ *     measured with the consent they already gave. A consent_update event follows it in the
+ *     dataLayer, carrying the same state, for triggers: a consent command has no event name
+ *     to fire a tag on.
  *  3. Load the Katla engine. It sees __katlaGcmDefault and does not declare a second
- *     default; it sends the update when the visitor chooses.
+ *     default; it sends the update, and the consent_update event after it, when the visitor
+ *     chooses.
  */
 const setDefaultConsentState = require('setDefaultConsentState');
 const updateConsentState = require('updateConsentState');
+const createQueue = require('createQueue');
 const getCookieValues = require('getCookieValues');
 const injectScript = require('injectScript');
 const setInWindow = require('setInWindow');
@@ -251,7 +255,13 @@ if (data.adsDataRedaction) gtagSet('ads_data_redaction', true);
 if (data.urlPassthrough) gtagSet('url_passthrough', true);
 
 const stored = storedSignals();
-if (stored) updateConsentState(stored);
+if (stored) {
+  updateConsentState(stored);
+  // The engine sends this event after every update it makes. This is the one update it does
+  // not make, so the event for it is sent from here.
+  const dataLayerPush = createQueue('dataLayer');
+  dataLayerPush({ event: 'consent_update', consent_state: stored });
+}
 
 // Tells the engine the default is already declared. A second 'default' arriving after
 // Google's tags have read this one can clobber it.
@@ -522,6 +532,45 @@ ___WEB_PERMISSIONS___
                     "boolean": false
                   }
                 ]
+              },
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "dataLayer"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  }
+                ]
               }
             ]
           }
@@ -587,12 +636,19 @@ scenarios:
       wait_for_update: 500
     });
     assertApi('updateConsentState').wasNotCalled();
+    assertApi('createQueue').wasNotCalled();
     assertApi('gtagSet').wasCalledWith('developer_id.dZmFkYT', true);
     assertThat(injected).isEqualTo('https://cdn.katla.app/fc92b6df-034c-42a9-af5c-397971caa002.consent.js');
     assertApi('gtmOnSuccess').wasCalled();
 - name: Returning visitor who accepted everything is updated to granted
   code: |-
     mock('getCookieValues', function () { return ['all|1790257034']; });
+    let queue;
+    let pushed;
+    mock('createQueue', function (name) {
+      queue = name;
+      return function (message) { pushed = message; };
+    });
     runCode(mockData);
     assertApi('updateConsentState').wasCalledWith({
       analytics_storage: 'granted',
@@ -600,15 +656,38 @@ scenarios:
       ad_user_data: 'granted',
       ad_personalization: 'granted'
     });
+    assertThat(queue).isEqualTo('dataLayer');
+    assertThat(pushed).isEqualTo({
+      event: 'consent_update',
+      consent_state: {
+        analytics_storage: 'granted',
+        ad_storage: 'granted',
+        ad_user_data: 'granted',
+        ad_personalization: 'granted'
+      }
+    });
 - name: Returning visitor who allowed analytics only keeps the ad signals denied
   code: |-
     mock('getCookieValues', function () { return ['functional,analytics|1790257034']; });
+    let pushed;
+    mock('createQueue', function () {
+      return function (message) { pushed = message; };
+    });
     runCode(mockData);
     assertApi('updateConsentState').wasCalledWith({
       analytics_storage: 'granted',
       ad_storage: 'denied',
       ad_user_data: 'denied',
       ad_personalization: 'denied'
+    });
+    assertThat(pushed).isEqualTo({
+      event: 'consent_update',
+      consent_state: {
+        analytics_storage: 'granted',
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied'
+      }
     });
 - name: A pinned language is passed to the engine
   code: |-
