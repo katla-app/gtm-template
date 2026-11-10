@@ -1,7 +1,11 @@
 homepage: "https://katla.app"
 documentation: "https://docs.katla.app/google-consent-mode"
 versions:
-  # Latest version first. Replace the sha with the commit that adds template.tpl in the
-  # public gallery repository before submitting.
+  # Latest version first. Each sha is a commit in the public katla-app/gtm-template repo
+  # (the sync workflow's "chore: sync template from katla@..." commit), never a commit in
+  # this monorepo. Add an entry here whenever template.tpl changes, or the gallery keeps
+  # serving the older version.
+  - sha: 4651ed25e539e1477f13003cfc6366a35b30f98e
+    changeNotes: A returning visitor's stored choice is now followed by a consent_update dataLayer event, so tags can fire on it without a page reload.
   - sha: f82d29f60817678a3790eac686b4433b753b22f5
     changeNotes: Initial release.
